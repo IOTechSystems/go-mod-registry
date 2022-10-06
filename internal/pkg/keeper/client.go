@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -89,7 +89,7 @@ func (k *keeperClient) Register() error {
 
 	if resp.StatusCode != http.StatusCreated {
 		var response BaseResponse
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %s", err.Error())
 		}
@@ -116,9 +116,9 @@ func (k *keeperClient) Unregister() error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		var response BaseResponse
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %s", err.Error())
 		}
@@ -164,7 +164,7 @@ func (k *keeperClient) GetServiceEndpoint(serviceKey string) (types.ServiceEndpo
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return types.ServiceEndpoint{}, fmt.Errorf("failed to read response body: %s", err.Error())
 	}
@@ -206,7 +206,7 @@ func (k *keeperClient) GetAllServiceEndpoints() ([]types.ServiceEndpoint, error)
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %s", err.Error())
 	}
@@ -253,7 +253,7 @@ func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, fmt.Errorf("failed to read response body: %s", err.Error())
 	}

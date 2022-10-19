@@ -114,6 +114,27 @@ func TestRegisterWithPingCallback(t *testing.T) {
 	require.True(t, receivedPing, "Never received health check ping")
 }
 
+func TestDuplicateRegister(t *testing.T) {
+	client := makeKeeperClient(t, getUniqueServiceName(), defaultServiceHost, defaultServicePort, true)
+
+	// Try to clean-up after test
+	defer func() {
+		_ = client.Unregister()
+	}()
+
+	// Register the service for the first time
+	err := client.Register()
+	require.NoError(t, err)
+
+	// Make sure the service already got registered
+	_, err = client.GetServiceEndpoint(client.serviceKey)
+	require.NoError(t, err, "Error getting service endpoint")
+
+	// Re-register the service and ensure no error occurred
+	err = client.Register()
+	require.NoError(t, err)
+}
+
 func TestUnregister(t *testing.T) {
 	client := makeKeeperClient(t, getUniqueServiceName(), defaultServiceHost, defaultServicePort, true)
 

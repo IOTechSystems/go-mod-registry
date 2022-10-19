@@ -62,7 +62,23 @@ func (mock *MockKeeper) Start() *httptest.Server {
 
 				writer.Header().Set(ContentTypeJSON, ContentTypeJSON)
 				writer.WriteHeader(http.StatusCreated)
+			case http.MethodPut:
+				mock.serviceLock.Lock()
+				defer mock.serviceLock.Unlock()
 
+				bodyBytes, err := io.ReadAll(request.Body)
+				if err != nil {
+					log.Printf("error reading request body: %s", err.Error())
+				}
+
+				var req AddRegistrationRequest
+				err = json.Unmarshal(bodyBytes, &req)
+				if err != nil {
+					log.Printf("error decoding request body: %s", err.Error())
+				}
+				mock.serviceStore[req.Registration.ServiceId] = req.Registration
+
+				writer.WriteHeader(http.StatusNoContent)
 			}
 		} else if strings.HasSuffix(request.URL.Path, ApiAllRegistrationRoute) {
 			switch request.Method {

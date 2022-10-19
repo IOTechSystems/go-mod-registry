@@ -74,20 +74,32 @@ func (k *keeperClient) Register() error {
 		return fmt.Errorf("failed to encode registration request: %s", err.Error())
 	}
 
-	req, err := http.NewRequest(http.MethodPost, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
+	// check if the service registry exists first
+	resp, err := getRegistryByService(k.config.GetRegistryUrl() + ApiRegistrationByServiceIdRoute + k.serviceKey)
+	if err != nil {
+		return fmt.Errorf("failed to check the %s service registry status: %s", k.serviceKey, err.Error())
+	}
+
+	// call the PUT registry API to update the registry if the service already exists
+	// otherwise, call the POST API to create the registry
+	httpMethod := http.MethodPost
+	if resp.StatusCode == http.StatusOK {
+		httpMethod = http.MethodPut
+	}
+	req, err := http.NewRequest(httpMethod, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
 	if err != nil {
 		return fmt.Errorf("failed to create register request: %s", err.Error())
 	}
 	req.Header.Set(ContentType, ContentTypeJSON)
 
 	client := http.Client{Timeout: defaultTimeout}
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return fmt.Errorf("http error: %s", err.Error())
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
 		var response BaseResponse
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -240,16 +252,26 @@ func (k *keeperClient) GetAllServiceEndpoints() ([]types.ServiceEndpoint, error)
 	return endpoints, nil
 }
 
-func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
-	req, err := http.NewRequest(http.MethodGet, k.config.GetRegistryUrl()+ApiRegistrationByServiceIdRoute+serviceKey, http.NoBody)
+// getRegistryByService invokes the GET registry by service API and returns the response
+func getRegistryByService(registryUrl string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, registryUrl, http.NoBody)
 	if err != nil {
-		return false, fmt.Errorf("failed to create http request: %s", err.Error())
+		return nil, fmt.Errorf("failed to create http request: %s", err.Error())
 	}
 
 	client := http.Client{Timeout: defaultTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("http error: %s", err.Error())
+		return nil, fmt.Errorf("http error: %s", err.Error())
+	}
+
+	return resp, nil
+}
+
+func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
+	resp, err := getRegistryByService(k.config.GetRegistryUrl() + ApiRegistrationByServiceIdRoute + serviceKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to get %s service registry: %s", serviceKey, err.Error())
 	}
 	defer resp.Body.Close()
 

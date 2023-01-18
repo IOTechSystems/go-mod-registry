@@ -15,3 +15,6 @@ const (
 	ApiAllRegistrationRoute         = "/api/v2/registry/all"
 	ApiRegistrationByServiceIdRoute = "/api/v2/registry/serviceId/"
 )
+
+// The Unknown service status
+const Unknown = "UNKNOWN"

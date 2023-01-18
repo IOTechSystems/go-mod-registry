@@ -69,11 +69,6 @@ func (k *keeperClient) Register() error {
 		},
 	}
 
-	jsonEncodedData, err := json.Marshal(registrationReq)
-	if err != nil {
-		return fmt.Errorf("failed to encode registration request: %s", err.Error())
-	}
-
 	// check if the service registry exists first
 	resp, err := getRegistryByService(k.config.GetRegistryUrl() + ApiRegistrationByServiceIdRoute + k.serviceKey)
 	if err != nil {
@@ -81,11 +76,19 @@ func (k *keeperClient) Register() error {
 	}
 
 	// call the PUT registry API to update the registry if the service already exists
-	// otherwise, call the POST API to create the registry
-	httpMethod := http.MethodPost
-	if resp.StatusCode == http.StatusOK {
-		httpMethod = http.MethodPut
+	// otherwise, call the POST API to create the registry with the initial health check status is UNKNOWN
+	httpMethod := http.MethodPut
+	if resp.StatusCode == http.StatusNotFound {
+		httpMethod = http.MethodPost
+		registrationReq.Registration.Status = Unknown
+
 	}
+
+	jsonEncodedData, err := json.Marshal(registrationReq)
+	if err != nil {
+		return fmt.Errorf("failed to encode registration request: %s", err.Error())
+	}
+
 	req, err := http.NewRequest(httpMethod, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
 	if err != nil {
 		return fmt.Errorf("failed to create register request: %s", err.Error())

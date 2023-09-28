@@ -1,7 +1,6 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2023 IOTech Ltd
 //
-// SPDX-License-Identifier: Apache-2.0
 
 package keeper
 
@@ -17,7 +16,10 @@ import (
 	"github.com/edgexfoundry/go-mod-registry/v2/pkg/types"
 )
 
-const defaultTimeout = 10 * time.Second
+const (
+	defaultTimeout = 10 * time.Second
+	haltStatus     = "HALT"
+)
 
 type keeperClient struct {
 	config              *types.Config
@@ -116,15 +118,37 @@ func (k *keeperClient) Register() error {
 }
 
 func (k *keeperClient) Unregister() error {
-	req, err := http.NewRequest(http.MethodDelete, k.config.GetRegistryUrl()+ApiRegistrationByServiceIdRoute+k.serviceKey, http.NoBody)
+	registrationReq := AddRegistrationRequest{
+		BaseRequest: BaseRequest{
+			Versionable: Versionable{ApiVersion: ApiVersion},
+		},
+		Registration: RegistrationDTO{
+			ServiceId: k.serviceKey,
+			Host:      k.serviceHost,
+			Port:      k.servicePort,
+			HealthCheck: HealthCheck{
+				Interval: k.healthCheckInterval,
+				Path:     k.healthCheckRoute,
+				Type:     "http",
+			},
+			Status: haltStatus,
+		},
+	}
+
+	jsonEncodedData, err := json.Marshal(registrationReq)
 	if err != nil {
-		return fmt.Errorf("failed to create unregister request: %s", err.Error())
+		return fmt.Errorf("failed to encode unregister request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
+	if err != nil {
+		return fmt.Errorf("failed to create unregister request: %w", err)
 	}
 
 	client := http.Client{Timeout: defaultTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("http error: %s", err.Error())
+		return fmt.Errorf("http error: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -132,11 +156,11 @@ func (k *keeperClient) Unregister() error {
 		var response BaseResponse
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("failed to read response body: %s", err.Error())
+			return fmt.Errorf("failed to read response body: %w", err)
 		}
 		err = json.Unmarshal(bodyBytes, &response)
 		if err != nil {
-			return fmt.Errorf("failed to decode response body: %s", err.Error())
+			return fmt.Errorf("failed to decode response body: %w", err)
 		}
 		return fmt.Errorf("failed to unregister %s: %s", k.serviceKey, response.Message)
 	}
@@ -287,7 +311,9 @@ func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response body: %s", err.Error())
 		}
-
+		if strings.EqualFold(response.Registration.Status, haltStatus) {
+			return false, fmt.Errorf(" %s service has been unregistered", serviceKey)
+		}
 		if !strings.EqualFold(response.Registration.Status, "up") {
 			return false, fmt.Errorf(" %s service not healthy...", serviceKey)
 		}

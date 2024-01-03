@@ -3,6 +3,36 @@
 ## Registry Module (in Go)
 [Github repository](https://github.com/edgexfoundry/go-mod-registry)
 
+## [v3.1.0] - 2023-11-15
+
+
+### 👷 Build
+
+- Upgrade to go 1.21 and linter 1.54.2 ([57427c9…](https://github.com/edgexfoundry/go-mod-registry/commit/57427c9c3f686bf05ac839874c74e582eea689df))
+
+## [v3.0.0] - 2023-05-31
+
+### Code Refactoring ♻
+
+- Update module to v3 ([#08a0459](https://github.com/edgexfoundry/go-mod-registry/commit/08a0459fb241432d7d1645e6d7d3539a588455c6))
+  ```text
+  BREAKING CHANGE: Import paths will need to change to v3
+  ```
+
+### Build 👷
+
+- Update to Go 1.20 and linter v1.51.2 ([#be5d5bf](https://github.com/edgexfoundry/go-mod-registry/commits/be5d5bf))
+
+## [v2.3.0] - 2022-11-09
+
+### Features ✨
+
+- None
+
+### Build 👷
+
+- Upgrade to Go 1.18 ([#7102501](https://github.com/edgexfoundry/go-mod-registry/commits/7102501))
+
 ## [v2.2.0] - 2022-05-11
 
 ### Features ✨

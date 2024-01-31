@@ -1,7 +1,6 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2023 IOTech Ltd
 //
-// SPDX-License-Identifier: Apache-2.0
 
 package keeper
 
@@ -9,15 +8,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/edgexfoundry/go-mod-registry/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-registry/v3/pkg/types"
 )
 
-const defaultTimeout = 10 * time.Second
+const (
+	defaultTimeout = 10 * time.Second
+	haltStatus     = "HALT"
+)
 
 type keeperClient struct {
 	config              *types.Config
@@ -74,22 +76,34 @@ func (k *keeperClient) Register() error {
 		return fmt.Errorf("failed to encode registration request: %s", err.Error())
 	}
 
-	req, err := http.NewRequest(http.MethodPost, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
+	// check if the service registry exists first
+	resp, err := getRegistryByService(k.config.GetRegistryUrl() + ApiRegistrationByServiceIdRoute + k.serviceKey)
+	if err != nil {
+		return fmt.Errorf("failed to check the %s service registry status: %s", k.serviceKey, err.Error())
+	}
+
+	// call the PUT registry API to update the registry if the service already exists
+	// otherwise, call the POST API to create the registry
+	httpMethod := http.MethodPost
+	if resp.StatusCode == http.StatusOK {
+		httpMethod = http.MethodPut
+	}
+	req, err := http.NewRequest(httpMethod, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
 	if err != nil {
 		return fmt.Errorf("failed to create register request: %s", err.Error())
 	}
 	req.Header.Set(ContentType, ContentTypeJSON)
 
 	client := http.Client{Timeout: defaultTimeout}
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		return fmt.Errorf("http error: %s", err.Error())
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
 		var response BaseResponse
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %s", err.Error())
 		}
@@ -104,27 +118,49 @@ func (k *keeperClient) Register() error {
 }
 
 func (k *keeperClient) Unregister() error {
-	req, err := http.NewRequest(http.MethodDelete, k.config.GetRegistryUrl()+ApiRegistrationByServiceIdRoute+k.serviceKey, http.NoBody)
+	registrationReq := AddRegistrationRequest{
+		BaseRequest: BaseRequest{
+			Versionable: Versionable{ApiVersion: ApiVersion},
+		},
+		Registration: RegistrationDTO{
+			ServiceId: k.serviceKey,
+			Host:      k.serviceHost,
+			Port:      k.servicePort,
+			HealthCheck: HealthCheck{
+				Interval: k.healthCheckInterval,
+				Path:     k.healthCheckRoute,
+				Type:     "http",
+			},
+			Status: haltStatus,
+		},
+	}
+
+	jsonEncodedData, err := json.Marshal(registrationReq)
 	if err != nil {
-		return fmt.Errorf("failed to create unregister request: %s", err.Error())
+		return fmt.Errorf("failed to encode unregister request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPut, k.config.GetRegistryUrl()+ApiRegisterRoute, bytes.NewReader(jsonEncodedData))
+	if err != nil {
+		return fmt.Errorf("failed to create unregister request: %w", err)
 	}
 
 	client := http.Client{Timeout: defaultTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("http error: %s", err.Error())
+		return fmt.Errorf("http error: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		var response BaseResponse
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return fmt.Errorf("failed to read response body: %s", err.Error())
+			return fmt.Errorf("failed to read response body: %w", err)
 		}
 		err = json.Unmarshal(bodyBytes, &response)
 		if err != nil {
-			return fmt.Errorf("failed to decode response body: %s", err.Error())
+			return fmt.Errorf("failed to decode response body: %w", err)
 		}
 		return fmt.Errorf("failed to unregister %s: %s", k.serviceKey, response.Message)
 	}
@@ -164,7 +200,7 @@ func (k *keeperClient) GetServiceEndpoint(serviceKey string) (types.ServiceEndpo
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return types.ServiceEndpoint{}, fmt.Errorf("failed to read response body: %s", err.Error())
 	}
@@ -206,7 +242,7 @@ func (k *keeperClient) GetAllServiceEndpoints() ([]types.ServiceEndpoint, error)
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %s", err.Error())
 	}
@@ -240,20 +276,30 @@ func (k *keeperClient) GetAllServiceEndpoints() ([]types.ServiceEndpoint, error)
 	return endpoints, nil
 }
 
-func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
-	req, err := http.NewRequest(http.MethodGet, k.config.GetRegistryUrl()+ApiRegistrationByServiceIdRoute+serviceKey, http.NoBody)
+// getRegistryByService invokes the GET registry by service API and returns the response
+func getRegistryByService(registryUrl string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, registryUrl, http.NoBody)
 	if err != nil {
-		return false, fmt.Errorf("failed to create http request: %s", err.Error())
+		return nil, fmt.Errorf("failed to create http request: %s", err.Error())
 	}
 
 	client := http.Client{Timeout: defaultTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("http error: %s", err.Error())
+		return nil, fmt.Errorf("http error: %s", err.Error())
+	}
+
+	return resp, nil
+}
+
+func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
+	resp, err := getRegistryByService(k.config.GetRegistryUrl() + ApiRegistrationByServiceIdRoute + serviceKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to get %s service registry: %s", serviceKey, err.Error())
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, fmt.Errorf("failed to read response body: %s", err.Error())
 	}
@@ -265,7 +311,9 @@ func (k *keeperClient) IsServiceAvailable(serviceKey string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("failed to decode response body: %s", err.Error())
 		}
-
+		if strings.EqualFold(response.Registration.Status, haltStatus) {
+			return false, fmt.Errorf(" %s service has been unregistered", serviceKey)
+		}
 		if !strings.EqualFold(response.Registration.Status, "up") {
 			return false, fmt.Errorf(" %s service not healthy...", serviceKey)
 		}

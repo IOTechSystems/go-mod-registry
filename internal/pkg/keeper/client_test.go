@@ -1,7 +1,6 @@
 //
-// Copyright (C) 2022 IOTech Ltd
+// Copyright (C) 2022-2023 IOTech Ltd
 //
-// SPDX-License-Identifier: Apache-2.0
 
 package keeper
 
@@ -17,11 +16,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/edgexfoundry/go-mod-registry/v2/pkg/types"
+	"github.com/edgexfoundry/go-mod-registry/v3/pkg/types"
 )
 
 const (
-	serviceName        = "consulUnitTest"
+	serviceName        = "keeperUnitTest"
 	defaultServiceHost = "localhost"
 	defaultServicePort = 8000
 )
@@ -93,8 +92,6 @@ func TestRegisterWithPingCallback(t *testing.T) {
 	serverPort, _ := strconv.Atoi(serverUrl.Port())
 
 	client := makeKeeperClient(t, getUniqueServiceName(), serverHost, serverPort, true)
-	// Make sure service is not already registered.
-	_ = client.Unregister()
 
 	// Try to clean-up after test
 	defer func() {
@@ -114,6 +111,27 @@ func TestRegisterWithPingCallback(t *testing.T) {
 	require.True(t, receivedPing, "Never received health check ping")
 }
 
+func TestDuplicateRegister(t *testing.T) {
+	client := makeKeeperClient(t, getUniqueServiceName(), defaultServiceHost, defaultServicePort, true)
+
+	// Try to clean-up after test
+	defer func() {
+		_ = client.Unregister()
+	}()
+
+	// Register the service for the first time
+	err := client.Register()
+	require.NoError(t, err)
+
+	// Make sure the service already got registered
+	_, err = client.GetServiceEndpoint(client.serviceKey)
+	require.NoError(t, err, "Error getting service endpoint")
+
+	// Re-register the service and ensure no error occurred
+	err = client.Register()
+	require.NoError(t, err)
+}
+
 func TestUnregister(t *testing.T) {
 	client := makeKeeperClient(t, getUniqueServiceName(), defaultServiceHost, defaultServicePort, true)
 
@@ -127,12 +145,11 @@ func TestUnregister(t *testing.T) {
 	require.NoError(t, err, "Error un-registering service")
 
 	_, err = client.GetServiceEndpoint(client.serviceKey)
-	require.Error(t, err, "Expected error getting service endpoint")
+	require.NoError(t, err, "Expected no error since service registry still exists after un-registering")
 }
 
 func TestGetServiceEndpoint(t *testing.T) {
 	uniqueServiceName := getUniqueServiceName()
-	expectedNotFoundEndpoint := types.ServiceEndpoint{}
 	expectedFoundEndpoint := types.ServiceEndpoint{
 		ServiceId: uniqueServiceName,
 		Host:      defaultServiceHost,
@@ -150,9 +167,9 @@ func TestGetServiceEndpoint(t *testing.T) {
 
 	// Test for endpoint not found
 	actualEndpoint, err := client.GetServiceEndpoint(client.serviceKey)
-	require.Error(t, err)
+	require.NoError(t, err)
 
-	require.Equal(t, expectedNotFoundEndpoint, actualEndpoint, "Test for endpoint not found result not as expected")
+	require.Equal(t, expectedFoundEndpoint, actualEndpoint, "Test for unregistered endpoint found result not as expected")
 
 	// Register the service endpoint
 	err = client.Register()
@@ -176,7 +193,7 @@ func TestIsServiceAvailableNotRegistered(t *testing.T) {
 
 	require.False(t, actual)
 	require.Error(t, err, "expected error")
-	require.Contains(t, err.Error(), "service is not registered", "Wrong error")
+	require.Contains(t, err.Error(), "service has been unregistered", "Wrong error")
 }
 
 func TestIsServiceAvailableNotHealthy(t *testing.T) {
@@ -227,8 +244,6 @@ func TestIsServiceAvailableHealthy(t *testing.T) {
 	serverPort, _ := strconv.Atoi(serverUrl.Port())
 
 	client := makeKeeperClient(t, getUniqueServiceName(), serverHost, serverPort, true)
-	// Make sure service is not already registered.
-	_ = client.Unregister()
 
 	// Try to clean-up after test
 	defer func() {

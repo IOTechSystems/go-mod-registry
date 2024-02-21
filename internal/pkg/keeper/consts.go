@@ -6,12 +6,13 @@
 package keeper
 
 const (
-	ApiVersion                      = "v2"
+	ApiVersion                      = "v3"
+	ApiBase                         = "/api/" + ApiVersion
 	ContentType                     = "Content-Type"
 	ContentTypeJSON                 = "application/json"
 	ContentTypeText                 = "text/plain"
-	ApiPingRoute                    = "/api/v2/ping"
-	ApiRegisterRoute                = "/api/v2/registry"
-	ApiAllRegistrationRoute         = "/api/v2/registry/all"
-	ApiRegistrationByServiceIdRoute = "/api/v2/registry/serviceId/"
+	ApiPingRoute                    = ApiBase + "/ping"
+	ApiRegisterRoute                = ApiBase + "/registry"
+	ApiAllRegistrationRoute         = ApiRegisterRoute + "/all"
+	ApiRegistrationByServiceIdRoute = ApiRegisterRoute + "/serviceId/"
 )

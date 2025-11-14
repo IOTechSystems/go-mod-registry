@@ -66,7 +66,7 @@ func (k *keeperClient) Register() error {
 			HealthCheck: HealthCheck{
 				Interval: k.healthCheckInterval,
 				Path:     k.healthCheckRoute,
-				Type:     "http",
+				Type:     k.config.GetServiceProtocol(),
 			},
 		},
 	}
@@ -129,7 +129,7 @@ func (k *keeperClient) Unregister() error {
 			HealthCheck: HealthCheck{
 				Interval: k.healthCheckInterval,
 				Path:     k.healthCheckRoute,
-				Type:     "http",
+				Type:     k.config.GetServiceProtocol(),
 			},
 			Status: haltStatus,
 		},

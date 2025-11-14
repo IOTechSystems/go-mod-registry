@@ -16,7 +16,11 @@
 
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"strings"
+)
 
 type GetAccessTokenCallback func() (string, error)
 
@@ -76,6 +80,9 @@ func (config Config) GetRegistryProtocol() string {
 }
 
 func (config Config) GetServiceProtocol() string {
+	if strings.EqualFold(os.Getenv("TLS_ENABLE"), "true") {
+		return "https"
+	}
 	if config.ServiceProtocol == "" {
 		return "http"
 	}
